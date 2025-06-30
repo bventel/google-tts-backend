@@ -6,3 +6,5 @@ autopep8
 flask
 google-cloud-texttospeech
 python-dotenv
+gunicorn
+
