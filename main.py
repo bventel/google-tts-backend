@@ -1,14 +1,13 @@
 from flask import Flask, request, jsonify, send_file
 from google.cloud import texttospeech
-from dotenv import load_dotenv
 import os
 from tempfile import NamedTemporaryFile
 
-# Load environment variables from .env
-load_dotenv()
+# Set path to the Render-mounted secret file
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/etc/secrets/gcloud-tts-key.json"
 
-# Create Flask app
 app = Flask(__name__)
+
 
 # Optional: confirm credentials loaded
 if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
