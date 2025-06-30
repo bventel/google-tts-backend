@@ -1,42 +1,29 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, send_file, jsonify
+from flask_cors import CORS
 from google.cloud import texttospeech
+from dotenv import load_dotenv
 import os
-from tempfile import NamedTemporaryFile
+import uuid
 
-# Set path to the Render-mounted secret file
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/etc/secrets/gcloud-tts-key.json"
+# Load credentials from .env (for local dev)
+load_dotenv()
 
 app = Flask(__name__)
-
-
-# Optional: confirm credentials loaded
-if not os.getenv("GOOGLE_APPLICATION_CREDENTIALS"):
-    raise EnvironmentError("GOOGLE_APPLICATION_CREDENTIALS not set in .env")
+CORS(app)  # 🔥 Enable CORS for all routes
 
 @app.route("/api/tts", methods=["POST"])
-def generate_tts():
+def tts():
     try:
         data = request.get_json()
-        text = data.get("text", "")
-        language = data.get("language", "en")
+        text = data["text"]
+        language = data["language"]
 
-        if not text:
-            return jsonify({"error": "Missing 'text' field"}), 400
-
-        # Voice selection
-        voice_map = {
-            "en": ("en-US-Wavenet-D", "en-US"),
-            "nl": ("nl-NL-Wavenet-B", "nl-NL"),
-        }
-        voice_name, lang_code = voice_map.get(language, voice_map["en"])
-
-        # TTS client
         client = texttospeech.TextToSpeechClient()
         input_text = texttospeech.SynthesisInput(text=text)
 
         voice = texttospeech.VoiceSelectionParams(
-            language_code=lang_code,
-            name=voice_name
+            language_code="en-US" if language == "en" else "nl-NL",
+            ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL
         )
 
         audio_config = texttospeech.AudioConfig(
@@ -47,15 +34,11 @@ def generate_tts():
             input=input_text, voice=voice, audio_config=audio_config
         )
 
-        # Write to temp file
-        with NamedTemporaryFile(delete=False, suffix=".mp3") as out:
+        filename = f"verse_{uuid.uuid4()}.mp3"
+        with open(filename, "wb") as out:
             out.write(response.audio_content)
-            temp_path = out.name
 
-        return send_file(temp_path, mimetype="audio/mpeg")
+        return send_file(filename, mimetype="audio/mpeg")
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-if __name__ == "__main__":
-    app.run(debug=True)

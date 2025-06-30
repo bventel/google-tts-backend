@@ -7,4 +7,5 @@ flask
 google-cloud-texttospeech
 python-dotenv
 gunicorn
+flask-cors
 
