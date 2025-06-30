@@ -41,4 +41,5 @@ def tts():
         return send_file(filename, mimetype="audio/mpeg")
 
     except Exception as e:
+        print("❌ TTS ERROR:", e)  # 🔥 Print the real error to Render logs
         return jsonify({"error": str(e)}), 500
