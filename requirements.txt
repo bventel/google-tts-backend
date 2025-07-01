@@ -10,3 +10,4 @@ python-dotenv
 gunicorn
 flask-cors
 requests
+openai>=1.0.0

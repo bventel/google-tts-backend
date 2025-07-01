@@ -84,6 +84,8 @@ GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta1/models/gemin
 load_dotenv()
 app = Flask(__name__)
 
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
 # === Step 1: Load Render secret file content ===
 # If using Render's Environment Variables to store the JSON as a string
 gcloud_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
@@ -144,7 +146,6 @@ def tts():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/simplify", methods=["POST"])
-@app.route("/api/simplify", methods=["POST"])
 def simplify():
     try:
         data = request.json
@@ -153,43 +154,23 @@ def simplify():
         if not text:
             return jsonify({"error": "Missing 'text' in request"}), 400
 
-        # Gemini API request
-        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
-        headers = {
-            "Content-Type": "application/json"
-        }
         prompt = f"Simplify the following sentence for someone with dyslexia:\n\n{text}"
 
-        payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": prompt}
-                    ]
-                }
-            ]
-        }
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You simplify text for people with reading challenges."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7
+        )
 
-        response = requests.post(f"{url}?key={GEMINI_API_KEY}", headers=headers, json=payload)
-
-        print("GEMINI RAW:", response.status_code, response.text)
-
-        try:
-            result = response.json()
-        except ValueError:
-            print("GEMINI ERROR: Invalid JSON")
-            return jsonify({"error": "Gemini returned invalid JSON"}), 500
-
-        # Extract simplified text
-        simplified = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-
-        if not simplified:
-            return jsonify({"error": "No simplified output received"}), 500
+        simplified = response["choices"][0]["message"]["content"].strip()
 
         return jsonify({"simplified": simplified})
 
     except Exception as e:
-        print("GEMINI ERROR:", e)
+        print("OPENAI ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
 
