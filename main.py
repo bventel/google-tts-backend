@@ -81,8 +81,6 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta1/models/gemini-pro:generateContent"
 
-
-
 load_dotenv()
 app = Flask(__name__)
 
@@ -146,46 +144,47 @@ def tts():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/simplify", methods=["POST"])
-def simplify_text():
+@app.route("/api/simplify", methods=["POST"])
+def simplify():
     try:
-        data = request.get_json()
-        verse = data.get("text")
+        data = request.json
+        text = data.get("text")
 
-        if not verse:
-            return jsonify({"error": "Missing 'text'"}), 400
+        if not text:
+            return jsonify({"error": "Missing 'text' in request"}), 400
 
-        prompt = (
-            "Simplify this Bible verse for someone with dyslexia. "
-            "Use very clear, short sentences, simple vocabulary, and keep the spiritual meaning intact.\n\n"
-            f"Verse: “{verse}”"
-        )
+        # Gemini API request
+        url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        prompt = f"Simplify the following sentence for someone with dyslexia:\n\n{text}"
 
         payload = {
-            "contents": [{
-                "parts": [{"text": prompt}]
-            }]
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt}
+                    ]
+                }
+            ]
         }
 
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": GEMINI_API_KEY
-        }
+        response = requests.post(f"{url}?key={GEMINI_API_KEY}", headers=headers, json=payload)
 
-        response = requests.post(GEMINI_API_URL, headers=headers, json=payload)
-        result = response.json()
+        print("GEMINI RAW:", response.status_code, response.text)
 
-        # DEBUG print the full response for inspection
-        print("GEMINI RAW RESPONSE:", result)
+        try:
+            result = response.json()
+        except ValueError:
+            print("GEMINI ERROR: Invalid JSON")
+            return jsonify({"error": "Gemini returned invalid JSON"}), 500
 
-        # Check structure safely
-        candidates = result.get("candidates")
-        if not candidates:
-            return jsonify({
-                "error": "Gemini API did not return any candidates.",
-                "response": result  # Send full response back for debug
-            }), 502
+        # Extract simplified text
+        simplified = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
 
-        simplified = candidates[0]["content"]["parts"][0]["text"]
+        if not simplified:
+            return jsonify({"error": "No simplified output received"}), 500
 
         return jsonify({"simplified": simplified})
 
