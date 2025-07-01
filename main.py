@@ -76,7 +76,7 @@ import os
 import uuid
 import json
 
-# Secure Render secret loading
+# Load credentials from Render secret (if applicable)
 gcloud_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
 if gcloud_creds:
     with open("gcloud-tts-key.json", "w") as f:
@@ -92,7 +92,7 @@ def tts():
         data = request.get_json()
         text = data.get("text")
         language = data.get("language", "en")
-        mode = data.get("mode", "normal")  # highlight or normal
+        mode = data.get("mode", "normal")  # 'highlight' or 'normal'
 
         if not text:
             return jsonify({"error": "Missing text"}), 400
@@ -109,12 +109,20 @@ def tts():
         )
 
         if mode == "highlight":
-            # Construct SSML with word-level <mark> tags
+            # Sanitize and construct SSML with <mark> tags
             words = text.split()
             ssml = "<speak>\n"
             for i, word in enumerate(words):
-                ssml += f'<mark name="w{i}"/>{word} '
+                safe_word = (
+                    word.replace("&", "&amp;")
+                        .replace("<", "&lt;")
+                        .replace(">", "&gt;")
+                )
+                ssml += f'<mark name="w{i}"/>{safe_word} '
             ssml += "</speak>"
+
+            print("🟡 SSML Payload:")
+            print(ssml)
 
             input_data = texttospeech.SynthesisInput(ssml=ssml)
 
@@ -122,20 +130,22 @@ def tts():
                 input=input_data,
                 voice=voice,
                 audio_config=audio_config,
-                enable_time_pointing=[texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK]
+                enable_time_pointing=[
+                    texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
+                ]
             )
 
-            # Save MP3 to disk
             filename = f"verse_{uuid.uuid4()}.mp3"
             with open(filename, "wb") as out:
                 out.write(response.audio_content)
 
-            # Extract word timings
+            # Build timing data
             word_timings = [
                 {"index": int(tp.mark_name[1:]), "time": tp.time_seconds}
                 for tp in response.timepoints
             ]
 
+            # Return with custom header
             return send_file(
                 filename,
                 mimetype="audio/mpeg",
@@ -145,7 +155,7 @@ def tts():
             )
 
         else:
-            # Normal mode (no timing)
+            # Normal TTS (no timing)
             input_text = texttospeech.SynthesisInput(text=text)
             response = client.synthesize_speech(
                 input=input_text,
@@ -160,5 +170,6 @@ def tts():
             return send_file(filename, mimetype="audio/mpeg")
 
     except Exception as e:
-        print("❌ TTS ERROR:", e)
+        print("❌ TTS ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
+
