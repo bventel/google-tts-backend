@@ -123,12 +123,11 @@ def tts():
 
         response = client.synthesize_speech(
         request={
-            "input": input_text,
+            "input": {"ssml": ssml_string},
             "voice": voice,
             "audio_config": audio_config
         }
-        )
-
+    )
 
         # Save audio
         audio_path = "verse.mp3"
