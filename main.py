@@ -69,92 +69,115 @@
 # if __name__ == "__main__":
 #     app.run(host="0.0.0.0", port=10000)
 
+
+
+
+
 import os
 import uuid
-import json
-from flask import Flask, request, send_file, jsonify
-from flask_cors import CORS
+import base64  # Import base64 for encoding
+from flask import Flask, request, jsonify
 from google.cloud import texttospeech
+from dotenv import load_dotenv
+import re # Import regex for splitting
 
+load_dotenv()
 app = Flask(__name__)
-CORS(app)
 
-# Load credentials from environment and write to file at runtime
+# === Step 1: Load Render secret file content ===
 gcloud_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-with open("gcloud-tts-key.json", "w") as f:
-    f.write(gcloud_creds)
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcloud-tts-key.json"
+if gcloud_creds:
+    creds_file = "gcloud-tts-key.json"
+    with open(creds_file, "w") as f:
+        f.write(gcloud_creds)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = creds_file
 
-client = texttospeech.TextToSpeechClient()
+# === Step 2: Enable CORS ===
+@app.after_request
+def apply_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    return response
 
-@app.route("/api/tts", methods=["POST"])
+@app.route("/api/tts", methods=["POST", "OPTIONS"])
 def tts():
+    if request.method == "OPTIONS":
+        return jsonify({"message": "CORS preflight"}), 200
+
     try:
-        data = request.json
+        data = request.get_json()
         text = data.get("text")
         language = data.get("language", "en")
 
         if not text:
-            return jsonify({"error": "Text is required"}), 400
+            return jsonify({"error": "Missing 'text' in request"}), 400
+        
+        # --- START OF MODIFICATIONS ---
 
-        # Split and wrap each word with SSML mark
-        words = text.split()
-        ssml = "<speak>\n"
+        # 1. Prepare text for SSML by splitting into words and creating mark tags
+        # A simple split by space. For more complex text, a more robust tokenizer might be needed.
+        words = re.findall(r'\b\w+\b', text)
+        ssml_text = "<speak>"
         for i, word in enumerate(words):
-            ssml += f'<mark name="w{i}"/>{word} '
-        ssml += "</speak>"
+            ssml_text += f'<mark name="{i}"/>{word} '
+        ssml_text += "</speak>"
+
+        client = texttospeech.TextToSpeechClient()
+
+        # 2. Use the SSML input
+        input_text = texttospeech.SynthesisInput(ssml=ssml_text)
 
         voice = texttospeech.VoiceSelectionParams(
             language_code="en-US" if language == "en" else "nl-NL",
-            ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL
+            ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL,
         )
 
         audio_config = texttospeech.AudioConfig(
             audio_encoding=texttospeech.AudioEncoding.MP3
         )
 
-        # Request audio + timepoints
-        # response = client.synthesize_speech(
-        #     input=texttospeech.SynthesisInput(ssml=ssml),
-        #     voice=voice,
-        #     audio_config=audio_config,
-        #     enable_time_pointing=["SSML_MARK"]
-        # )
-
+        # 3. Enable timepoints in the request
         response = client.synthesize_speech(
-        request={
-            "input": {"ssml": ssml},
-            "voice": voice,
-            "audio_config": audio_config
-        }
-    )
+            input=input_text,
+            voice=voice,
+            audio_config=audio_config,
+            enable_time_pointing=[texttospeech.SynthesizeSpeechRequest.TimepointType.SSML]
+        )
 
-        # Save audio
-        audio_path = "verse.mp3"
-        with open(audio_path, "wb") as out:
-            out.write(response.audio_content)
+        # 4. Process the response to create a JSON object with audio and timepoints
+        
+        # Audio content is now encoded in Base64 to be sent as part of the JSON
+        audio_content_base64 = base64.b64encode(response.audio_content).decode("utf-8")
 
-        # Parse timepoints
-        word_timings = []
-        for point in response.timepoints:
-            index = int(point.mark_name[1:])  # "w0" -> 0
-            word_timings.append({
-                "word": words[index],
-                "start_time": point.time.seconds + point.time.nanos / 1e9
+        # Extract timepoints
+        timepoints = []
+        for timepoint in response.timepoints:
+            timepoints.append({
+                "mark_name": timepoint.mark_name,
+                "time_seconds": timepoint.time_seconds
             })
 
+        # Return the new JSON structure
         return jsonify({
-            "audio_url": "/api/audio",
-            "timings": word_timings
+            "audio_content": audio_content_base64,
+            "timepoints": timepoints,
+            "words": words # Also send back the parsed words for convenience
         })
 
+        # The old send_file logic is no longer needed
+        # filename = f"verse_{uuid.uuid4()}.mp3"
+        # with open(filename, "wb") as out:
+        #     out.write(response.audio_content)
+        # return send_file(filename, mimetype="audio/mpeg")
+        
+        # --- END OF MODIFICATIONS ---
+
     except Exception as e:
-        print("TTS ERROR:", e)
+        # It's helpful to log the full traceback for debugging
+        import traceback
+        print("❌ TTS ERROR:", traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/audio")
-def serve_audio():
-    return send_file("verse.mp3", mimetype="audio/mpeg")
-
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=10000)
