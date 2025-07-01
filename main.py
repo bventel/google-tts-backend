@@ -154,7 +154,7 @@ def simplify_text():
 
         prompt = (
             "Simplify this Bible verse for someone with dyslexia. "
-            "Use very clear, short sentences, simple vocabulary, but keep the spiritual meaning intact.\n\n"
+            "Use very clear, short sentences, simple vocabulary, and keep the spiritual meaning intact.\n\n"
             f"Verse: “{verse}”"
         )
 
@@ -172,14 +172,25 @@ def simplify_text():
         response = requests.post(GEMINI_API_URL, headers=headers, json=payload)
         result = response.json()
 
-        # Extract the reply
-        simplified = result["candidates"][0]["content"]["parts"][0]["text"]
+        # DEBUG print the full response for inspection
+        print("GEMINI RAW RESPONSE:", result)
+
+        # Check structure safely
+        candidates = result.get("candidates")
+        if not candidates:
+            return jsonify({
+                "error": "Gemini API did not return any candidates.",
+                "response": result  # Send full response back for debug
+            }), 502
+
+        simplified = candidates[0]["content"]["parts"][0]["text"]
 
         return jsonify({"simplified": simplified})
 
     except Exception as e:
         print("GEMINI ERROR:", e)
         return jsonify({"error": str(e)}), 500
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
