@@ -69,22 +69,19 @@
 # if __name__ == "__main__":
 #     app.run(host="0.0.0.0", port=10000)
 
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, send_file, jsonify
 from flask_cors import CORS
 from google.cloud import texttospeech
+from google.cloud.texttospeech_v1.types import SynthesizeSpeechRequest
+from dotenv import load_dotenv
 import os
-import uuid
-import json
 
-# Load credentials from Render secret (if applicable)
-gcloud_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-if gcloud_creds:
-    with open("gcloud-tts-key.json", "w") as f:
-        f.write(gcloud_creds)
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcloud-tts-key.json"
+load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
+
+client = texttospeech.TextToSpeechClient()
 
 @app.route("/api/tts", methods=["POST"])
 def tts():
@@ -92,84 +89,60 @@ def tts():
         data = request.get_json()
         text = data.get("text")
         language = data.get("language", "en")
-        mode = data.get("mode", "normal")  # 'highlight' or 'normal'
+        mode = data.get("mode", "normal")
 
         if not text:
-            return jsonify({"error": "Missing text"}), 400
+            return jsonify({"error": "Text is required"}), 400
 
-        client = texttospeech.TextToSpeechClient()
-
+        # Voice config
         voice = texttospeech.VoiceSelectionParams(
             language_code="en-US" if language == "en" else "nl-NL",
             ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL
         )
 
-        audio_config = texttospeech.AudioConfig(
-            audio_encoding=texttospeech.AudioEncoding.MP3
-        )
+        audio_config = texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.MP3)
 
-        if mode == "highlight":
-            # Sanitize and construct SSML with <mark> tags
+        # Normal mode: plain text
+        if mode == "normal":
+            synthesis_input = texttospeech.SynthesisInput(text=text)
+            response = client.synthesize_speech(
+                input=synthesis_input,
+                voice=voice,
+                audio_config=audio_config
+            )
+
+        # Highlight mode: SSML with <mark> tags
+        elif mode == "highlight":
             words = text.split()
             ssml = "<speak>\n"
             for i, word in enumerate(words):
-                safe_word = (
-                    word.replace("&", "&amp;")
-                        .replace("<", "&lt;")
-                        .replace(">", "&gt;")
-                )
+                safe_word = word.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
                 ssml += f'<mark name="w{i}"/>{safe_word} '
             ssml += "</speak>"
 
             print("🟡 SSML Payload:")
             print(ssml)
 
-            input_data = texttospeech.SynthesisInput(ssml=ssml)
-
+            synthesis_input = texttospeech.SynthesisInput(ssml=ssml)
             response = client.synthesize_speech(
-                input=input_data,
+                input=synthesis_input,
                 voice=voice,
                 audio_config=audio_config,
-                enable_time_pointing=[
-                    texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK
-                ]
-            )
-
-            filename = f"verse_{uuid.uuid4()}.mp3"
-            with open(filename, "wb") as out:
-                out.write(response.audio_content)
-
-            # Build timing data
-            word_timings = [
-                {"index": int(tp.mark_name[1:]), "time": tp.time_seconds}
-                for tp in response.timepoints
-            ]
-
-            # Return with custom header
-            return send_file(
-                filename,
-                mimetype="audio/mpeg",
-                as_attachment=True,
-                download_name="verse.mp3",
-                headers={"X-Timings": json.dumps(word_timings)}
+                enable_time_pointing=[SynthesizeSpeechRequest.TimepointType.SSML_MARK]
             )
 
         else:
-            # Normal TTS (no timing)
-            input_text = texttospeech.SynthesisInput(text=text)
-            response = client.synthesize_speech(
-                input=input_text,
-                voice=voice,
-                audio_config=audio_config
-            )
+            return jsonify({"error": "Invalid mode"}), 400
 
-            filename = f"verse_{uuid.uuid4()}.mp3"
-            with open(filename, "wb") as out:
-                out.write(response.audio_content)
+        with open("verse.mp3", "wb") as out:
+            out.write(response.audio_content)
 
-            return send_file(filename, mimetype="audio/mpeg")
+        return send_file("verse.mp3", mimetype="audio/mpeg")
 
     except Exception as e:
-        print("❌ TTS ERROR:", str(e))
+        print(f"❌ TTS ERROR: {e}")
         return jsonify({"error": str(e)}), 500
 
+
+if __name__ == "__main__":
+    app.run(debug=True)
