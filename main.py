@@ -114,12 +114,21 @@ def tts():
         )
 
         # Request audio + timepoints
+        # response = client.synthesize_speech(
+        #     input=texttospeech.SynthesisInput(ssml=ssml),
+        #     voice=voice,
+        #     audio_config=audio_config,
+        #     enable_time_pointing=["SSML_MARK"]
+        # )
+
         response = client.synthesize_speech(
-            input=texttospeech.SynthesisInput(ssml=ssml),
-            voice=voice,
-            audio_config=audio_config,
-            enable_time_pointing=["SSML_MARK"]
+        request={
+            "input": input_text,
+            "voice": voice,
+            "audio_config": audio_config
+        }
         )
+
 
         # Save audio
         audio_path = "verse.mp3"
