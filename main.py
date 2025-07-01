@@ -123,7 +123,7 @@ def tts():
 
         response = client.synthesize_speech(
         request={
-            "input": {"ssml": ssml_string},
+            "input": {"ssml": ssml},
             "voice": voice,
             "audio_config": audio_config
         }
