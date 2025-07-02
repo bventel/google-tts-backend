@@ -141,8 +141,8 @@ def tts():
         print("❌ TTS ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
-@app.route("/api/simplify", methods=["POST"])
-def simplify():
+# @app.route("/api/simplify", methods=["POST"])
+# def simplify():
     try:
         data = request.json
         text = data.get("text")
@@ -154,6 +154,39 @@ def simplify():
             messages=[
                 {"role": "system", "content": "You are a Bible verse simplifier."},
                 {"role": "user", "content": f"Simplify this verse in plain language: {text}"}
+            ],
+            temperature=0.5
+        )
+
+        simplified = response.choices[0].message.content.strip()
+        return jsonify({"simplified": simplified})
+
+    except Exception as e:
+        print("OPENAI ERROR:", e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/simplify", methods=["POST"])
+def simplify():
+    try:
+        data = request.json
+        text = data.get("text")
+        language = data.get("language", "en")
+
+        if not text:
+            return jsonify({"error": "Text is required"}), 400
+
+        if language == "nl":
+            system_prompt = "Je vereenvoudigt bijbelverzen voor Nederlandstalige lezers met leesproblemen. Gebruik eenvoudige, duidelijke taal, maar behoud de betekenis."
+            user_prompt = f"Vereenvoudig dit bijbelvers in het Nederlands: {text}"
+        else:
+            system_prompt = "You simplify Bible verses for readers with dyslexia using respectful, plain English."
+            user_prompt = f"Simplify this Bible verse in English: {text}"
+
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
             ],
             temperature=0.5
         )
