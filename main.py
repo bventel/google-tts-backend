@@ -142,35 +142,27 @@ def tts():
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/simplify", methods=["POST"])
-def simplify_verse():
+def simplify():
     try:
-        data = request.get_json()
-        text = data.get("text", "")
-        language = data.get("language", "en")
-
+        data = request.json
+        text = data.get("text")
         if not text:
-            return jsonify({"error": "Missing verse text"}), 400
+            return jsonify({"error": "Text is required"}), 400
 
-        prompt = (
-            f"Please simplify the following Bible verse in plain and respectful language:\n\n{text}"
-        )
-
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You simplify Bible verses for people with reading or cognitive difficulties, including dyslexia."},
-                {"role": "user", "content": prompt}
+                {"role": "system", "content": "You are a Bible verse simplifier."},
+                {"role": "user", "content": f"Simplify this verse in plain language: {text}"}
             ],
-            max_tokens=150,
-            temperature=0.7
+            temperature=0.5
         )
 
-        simplified = response["choices"][0]["message"]["content"].strip()
-
+        simplified = response.choices[0].message.content.strip()
         return jsonify({"simplified": simplified})
 
     except Exception as e:
-        print("GEMINI ERROR:", e)
+        print("OPENAI ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
