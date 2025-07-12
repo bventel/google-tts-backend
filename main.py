@@ -71,158 +71,28 @@
 
 # # ################# START: WORKING CODE 12 JULY 2025 20H16 #################################
 
-# import os
-# import uuid
-# from flask import Flask, request, jsonify, send_file
-# from google.cloud import texttospeech
-# from dotenv import load_dotenv
-
-# import openai
-# openai.api_key = os.getenv("OPENAI_API_KEY")
-
-
-# load_dotenv()
-# app = Flask(__name__)
-
-# # === Step 1: Load Render secret file content ===
-# # If using Render's Environment Variables to store the JSON as a string
-# gcloud_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
-# if gcloud_creds:
-#     with open("gcloud-tts-key.json", "w") as f:
-#         f.write(gcloud_creds)
-#     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcloud-tts-key.json"
-
-# # === Step 2: Enable CORS ===
-# @app.after_request
-# def apply_cors_headers(response):
-#     response.headers["Access-Control-Allow-Origin"] = "*"
-#     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-#     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-#     return response
-
-# @app.route("/api/tts", methods=["POST", "OPTIONS"])
-# def tts():
-#     if request.method == "OPTIONS":
-#         return jsonify({"message": "CORS preflight"}), 200
-
-#     try:
-#         data = request.get_json()
-#         text = data.get("text")
-#         language = data.get("language", "en")
-
-#         if not text:
-#             return jsonify({"error": "Missing 'text' in request"}), 400
-
-#         client = texttospeech.TextToSpeechClient()
-
-#         input_text = texttospeech.SynthesisInput(text=text)
-
-#         # Support English and Dutch voices
-#         voice = texttospeech.VoiceSelectionParams(
-#             language_code="en-US" if language == "en" else "nl-NL",
-#             ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL,
-#         )
-
-#         audio_config = texttospeech.AudioConfig(
-#             audio_encoding=texttospeech.AudioEncoding.MP3
-#         )
-
-#         response = client.synthesize_speech(
-#             input=input_text,
-#             voice=voice,
-#             audio_config=audio_config
-#         )
-
-#         filename = f"verse_{uuid.uuid4()}.mp3"
-#         with open(filename, "wb") as out:
-#             out.write(response.audio_content)
-
-#         return send_file(filename, mimetype="audio/mpeg")
-
-#     except Exception as e:
-#         print("❌ TTS ERROR:", e)
-#         return jsonify({"error": str(e)}), 500
-
-# # @app.route("/api/simplify", methods=["POST"])
-# # def simplify():
-#     try:
-#         data = request.json
-#         text = data.get("text")
-#         if not text:
-#             return jsonify({"error": "Text is required"}), 400
-
-#         response = openai.chat.completions.create(
-#             model="gpt-3.5-turbo",
-#             messages=[
-#                 {"role": "system", "content": "You are a Bible verse simplifier."},
-#                 {"role": "user", "content": f"Simplify this verse in plain language: {text}"}
-#             ],
-#             temperature=0.5
-#         )
-
-#         simplified = response.choices[0].message.content.strip()
-#         return jsonify({"simplified": simplified})
-
-#     except Exception as e:
-#         print("OPENAI ERROR:", e)
-#         return jsonify({"error": str(e)}), 500
-
-# @app.route("/api/simplify", methods=["POST"])
-# def simplify():
-#     try:
-#         data = request.json
-#         text = data.get("text")
-#         language = data.get("language", "en")
-
-#         if not text:
-#             return jsonify({"error": "Text is required"}), 400
-
-#         if language == "nl":
-#             system_prompt = "Je vereenvoudigt bijbelverzen voor Nederlandstalige lezers met leesproblemen. Gebruik eenvoudige, duidelijke taal, maar behoud de betekenis."
-#             user_prompt = f"Vereenvoudig dit bijbelvers in het Nederlands: {text}"
-#         else:
-#             system_prompt = "You simplify Bible verses for readers with dyslexia using respectful, plain English."
-#             user_prompt = f"Simplify this Bible verse in English: {text}"
-
-#         response = openai.chat.completions.create(
-#             model="gpt-3.5-turbo",
-#             messages=[
-#                 {"role": "system", "content": system_prompt},
-#                 {"role": "user", "content": user_prompt}
-#             ],
-#             temperature=0.5
-#         )
-
-#         simplified = response.choices[0].message.content.strip()
-#         return jsonify({"simplified": simplified})
-
-#     except Exception as e:
-#         print("OPENAI ERROR:", e)
-#         return jsonify({"error": str(e)}), 500
-
-# if __name__ == "__main__":
-#     app.run(host="0.0.0.0", port=10000)
-
-# # ################# END: WORKING CODE 12 JULY 2025 20H16 #################################
-
 import os
 import uuid
-import base64
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from google.cloud import texttospeech
 from dotenv import load_dotenv
+
+import openai
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
 
 load_dotenv()
 app = Flask(__name__)
 
-# === Authenticate with Google Cloud ===
+# === Step 1: Load Render secret file content ===
+# If using Render's Environment Variables to store the JSON as a string
 gcloud_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS_JSON")
 if gcloud_creds:
     with open("gcloud-tts-key.json", "w") as f:
         f.write(gcloud_creds)
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "gcloud-tts-key.json"
 
-# === Enable CORS ===
+# === Step 2: Enable CORS ===
 @app.after_request
 def apply_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -230,7 +100,6 @@ def apply_cors_headers(response):
     response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
     return response
 
-# === TTS with Timepoints ===
 @app.route("/api/tts", methods=["POST", "OPTIONS"])
 def tts():
     if request.method == "OPTIONS":
@@ -246,15 +115,9 @@ def tts():
 
         client = texttospeech.TextToSpeechClient()
 
-        # Build SSML with <mark> tags per word
-        words = text.strip().split()
-        ssml = "<speak>\n"
-        for i, word in enumerate(words):
-            ssml += f'<mark name="w{i}" />{word} '
-        ssml += "</speak>"
+        input_text = texttospeech.SynthesisInput(text=text)
 
-        input_text = texttospeech.SynthesisInput(ssml=ssml)
-
+        # Support English and Dutch voices
         voice = texttospeech.VoiceSelectionParams(
             language_code="en-US" if language == "en" else "nl-NL",
             ssml_gender=texttospeech.SsmlVoiceGender.NEUTRAL,
@@ -264,35 +127,82 @@ def tts():
             audio_encoding=texttospeech.AudioEncoding.MP3
         )
 
-        # ✅ Enable timepoint output
         response = client.synthesize_speech(
             input=input_text,
             voice=voice,
-            audio_config=audio_config,
-            enable_time_pointing=["MARK"]
+            audio_config=audio_config
         )
 
-        # Encode audio as base64
-        audio_b64 = base64.b64encode(response.audio_content).decode("utf-8")
+        filename = f"verse_{uuid.uuid4()}.mp3"
+        with open(filename, "wb") as out:
+            out.write(response.audio_content)
 
-        # Convert timepoints to usable format
-        timepoints = [
-            {
-                "mark": tp.mark_name,
-                "time": tp.time.seconds + tp.time.nanos * 1e-9
-            }
-            for tp in response.timepoints
-        ]
-
-        return jsonify({
-            "audio_base64": audio_b64,
-            "timepoints": timepoints,
-            "words": words
-        })
+        return send_file(filename, mimetype="audio/mpeg")
 
     except Exception as e:
         print("❌ TTS ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
+# @app.route("/api/simplify", methods=["POST"])
+# def simplify():
+    try:
+        data = request.json
+        text = data.get("text")
+        if not text:
+            return jsonify({"error": "Text is required"}), 400
+
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a Bible verse simplifier."},
+                {"role": "user", "content": f"Simplify this verse in plain language: {text}"}
+            ],
+            temperature=0.5
+        )
+
+        simplified = response.choices[0].message.content.strip()
+        return jsonify({"simplified": simplified})
+
+    except Exception as e:
+        print("OPENAI ERROR:", e)
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/simplify", methods=["POST"])
+def simplify():
+    try:
+        data = request.json
+        text = data.get("text")
+        language = data.get("language", "en")
+
+        if not text:
+            return jsonify({"error": "Text is required"}), 400
+
+        if language == "nl":
+            system_prompt = "Je vereenvoudigt bijbelverzen voor Nederlandstalige lezers met leesproblemen. Gebruik eenvoudige, duidelijke taal, maar behoud de betekenis."
+            user_prompt = f"Vereenvoudig dit bijbelvers in het Nederlands: {text}"
+        else:
+            system_prompt = "You simplify Bible verses for readers with dyslexia using respectful, plain English."
+            user_prompt = f"Simplify this Bible verse in English: {text}"
+
+        response = openai.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            temperature=0.5
+        )
+
+        simplified = response.choices[0].message.content.strip()
+        return jsonify({"simplified": simplified})
+
+    except Exception as e:
+        print("OPENAI ERROR:", e)
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
+# # ################# END: WORKING CODE 12 JULY 2025 20H16 #################################
+
+
